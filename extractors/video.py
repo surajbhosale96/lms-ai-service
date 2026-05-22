@@ -4,7 +4,13 @@ import subprocess
 import tempfile
 from groq import Groq
 
-client = Groq()
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        _client = Groq()
+    return _client
 
 
 def extract_video(url: str) -> str:
@@ -42,7 +48,7 @@ def extract_video(url: str) -> str:
         # Transcribe with Groq Whisper API
         print(f"[video] Transcribing with Groq Whisper...")
         with open(audio_path, "rb") as af:
-            transcription = client.audio.transcriptions.create(
+            transcription = get_client().audio.transcriptions.create(
                 file=(os.path.basename(audio_path), af),
                 model="whisper-large-v3",
                 response_format="text",

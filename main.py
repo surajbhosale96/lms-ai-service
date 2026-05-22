@@ -10,6 +10,15 @@ from pipeline.summarizer import get_video_summary
 
 app = FastAPI(title="LMS AI Summary Service")
 
+@app.on_event("startup")
+async def startup():
+    import shutil, os
+    ffmpeg = shutil.which("ffmpeg")
+    groq_key = os.environ.get("GROQ_API_KEY", "NOT SET")
+    print(f"[startup] ffmpeg: {ffmpeg}")
+    print(f"[startup] GROQ_API_KEY set: {'yes' if groq_key != 'NOT SET' else 'NO - MISSING'}")
+    print("[startup] App ready.")
+
 # In-memory job store: jobId -> {status, summary, error}
 _jobs: dict = {}
 
