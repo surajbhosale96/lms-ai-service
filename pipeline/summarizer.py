@@ -1,8 +1,13 @@
-import chromadb
+from langchain_groq import ChatGroq
 from extractors.video import extract_video
-from pipeline.rag import get_llm
 
-chroma_client = chromadb.PersistentClient(path="./vectorstore")
+_llm = None
+
+def get_llm():
+    global _llm
+    if _llm is None:
+        _llm = ChatGroq(model="llama-3.1-8b-instant")
+    return _llm
 
 # Cache: moduleId -> summary string
 _summary_cache: dict = {}

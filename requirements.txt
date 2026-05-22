@@ -1,14 +1,6 @@
 fastapi
 uvicorn
 python-dotenv
-langchain
-langchain-groq
-langchain-huggingface
-chromadb
-sentence-transformers
-pdfplumber
-python-docx
-beautifulsoup4
-lxml
 groq
+langchain-groq
 requests
