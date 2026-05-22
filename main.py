@@ -1,3 +1,5 @@
+import uuid
+import threading
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -7,6 +9,9 @@ load_dotenv(dotenv_path="../.env")
 from pipeline.summarizer import get_video_summary
 
 app = FastAPI(title="LMS AI Summary Service")
+
+# In-memory job store: jobId -> {status, summary, error}
+_jobs: dict = {}
 
 
 @app.get("/")
@@ -24,15 +29,29 @@ class SummaryRequest(BaseModel):
     moduleFile: str
 
 
-class SummaryResponse(BaseModel):
-    moduleId: str
-    summary: str
+@app.post("/summary/start")
+def summary_start(request: SummaryRequest):
+    """Start async summary job. Returns jobId immediately."""
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {"status": "processing", "summary": None, "error": None}
+
+    def run():
+        try:
+            text = get_video_summary(request.moduleId, request.moduleFile)
+            _jobs[job_id]["summary"] = text
+            _jobs[job_id]["status"] = "done"
+        except Exception as e:
+            _jobs[job_id]["error"] = str(e)
+            _jobs[job_id]["status"] = "error"
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"jobId": job_id, "status": "processing"}
 
 
-@app.post("/summary", response_model=SummaryResponse)
-def summary(request: SummaryRequest):
-    try:
-        text = get_video_summary(request.moduleId, request.moduleFile)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Summary failed: {str(e)}")
-    return SummaryResponse(moduleId=request.moduleId, summary=text)
+@app.get("/summary/status/{job_id}")
+def summary_status(job_id: str):
+    """Poll this endpoint until status is 'done' or 'error'."""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job

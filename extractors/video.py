@@ -2,7 +2,6 @@ import os
 import shutil
 import subprocess
 import tempfile
-import requests
 from groq import Groq
 
 client = Groq()
@@ -10,37 +9,35 @@ client = Groq()
 
 def extract_video(url: str) -> str:
     ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
-    print(f"[video] ffmpeg path: {ffmpeg_bin}")
+    print(f"[video] ffmpeg: {ffmpeg_bin}")
+    print(f"[video] Streaming audio extraction from URL...")
 
-    # Download video to a temp file
-    print(f"[video] Downloading video from {url[:60]}...")
-    response = requests.get(url, stream=True, timeout=300)
-    response.raise_for_status()
-
-    suffix = ".mp4"
-    for ext in [".webm", ".mkv", ".mov", ".avi"]:
-        if ext in url.lower():
-            suffix = ext
-            break
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as vf:
-        for chunk in response.iter_content(chunk_size=1024 * 1024):
-            vf.write(chunk)
-        video_path = vf.name
-
-    audio_path = video_path.replace(suffix, ".mp3")
+    audio_path = tempfile.mktemp(suffix=".mp3")
 
     try:
-        # Extract compressed mono audio (~10MB for 45 min)
-        print(f"[video] Extracting audio...")
+        # Pass URL directly to ffmpeg — no need to download the full video file
+        # ffmpeg streams it internally, saving memory on the server
         result = subprocess.run(
-            [ffmpeg_bin, "-i", video_path, "-vn", "-ar", "16000",
-             "-ac", "1", "-b:a", "32k", audio_path, "-y"],
+            [
+                ffmpeg_bin,
+                "-i", url,
+                "-vn",          # no video
+                "-ar", "16000", # 16kHz sample rate
+                "-ac", "1",     # mono
+                "-b:a", "32k",  # 32kbps — keeps audio under 25MB for 45-min video
+                audio_path,
+                "-y",
+            ],
             capture_output=True,
             text=True,
+            timeout=600,        # 10 min max
         )
+
         if result.returncode != 0:
-            raise RuntimeError(f"ffmpeg error: {result.stderr[-300:]}")
+            raise RuntimeError(f"ffmpeg error: {result.stderr[-500:]}")
+
+        audio_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+        print(f"[video] Audio extracted: {audio_size_mb:.1f} MB")
 
         # Transcribe with Groq Whisper API
         print(f"[video] Transcribing with Groq Whisper...")
@@ -55,7 +52,5 @@ def extract_video(url: str) -> str:
         return transcription if isinstance(transcription, str) else transcription.text
 
     finally:
-        if os.path.exists(video_path):
-            os.unlink(video_path)
         if os.path.exists(audio_path):
             os.unlink(audio_path)
