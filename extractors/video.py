@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import tempfile
 import requests
 from groq import Groq
@@ -7,6 +9,9 @@ client = Groq()
 
 
 def extract_video(url: str) -> str:
+    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    print(f"[video] ffmpeg path: {ffmpeg_bin}")
+
     # Download video to a temp file
     print(f"[video] Downloading video from {url[:60]}...")
     response = requests.get(url, stream=True, timeout=300)
@@ -26,15 +31,18 @@ def extract_video(url: str) -> str:
     audio_path = video_path.replace(suffix, ".mp3")
 
     try:
-        # Extract compressed mono audio with ffmpeg (~10MB for 45 min)
+        # Extract compressed mono audio (~10MB for 45 min)
         print(f"[video] Extracting audio...")
-        ret = os.system(
-            f'ffmpeg -i "{video_path}" -vn -ar 16000 -ac 1 -b:a 32k "{audio_path}" -y -loglevel error'
+        result = subprocess.run(
+            [ffmpeg_bin, "-i", video_path, "-vn", "-ar", "16000",
+             "-ac", "1", "-b:a", "32k", audio_path, "-y"],
+            capture_output=True,
+            text=True,
         )
-        if ret != 0:
-            raise RuntimeError("ffmpeg audio extraction failed")
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpeg error: {result.stderr[-300:]}")
 
-        # Transcribe with Groq Whisper API (handles 45 min in ~10 seconds)
+        # Transcribe with Groq Whisper API
         print(f"[video] Transcribing with Groq Whisper...")
         with open(audio_path, "rb") as af:
             transcription = client.audio.transcriptions.create(
