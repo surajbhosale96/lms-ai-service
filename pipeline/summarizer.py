@@ -1,13 +1,13 @@
-from langchain_groq import ChatGroq
+from groq import Groq
 from extractors.video import extract_video
 
-_llm = None
+_client = None
 
-def get_llm():
-    global _llm
-    if _llm is None:
-        _llm = ChatGroq(model="llama-3.1-8b-instant")
-    return _llm
+def get_client():
+    global _client
+    if _client is None:
+        _client = Groq()
+    return _client
 
 # Cache: moduleId -> summary string
 _summary_cache: dict = {}
@@ -34,8 +34,12 @@ def get_video_summary(module_id: str, module_file: str) -> str:
 
     print(f"[summarizer] Generating summary for module {module_id}...")
     prompt = SUMMARY_PROMPT.format(transcript=transcript[:6000])
-    response = get_llm().invoke(prompt)
-    summary = response.content
+
+    response = get_client().chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}],
+    )
+    summary = response.choices[0].message.content
 
     _summary_cache[module_id] = summary
     print(f"[summarizer] Summary ready for module {module_id}.")
